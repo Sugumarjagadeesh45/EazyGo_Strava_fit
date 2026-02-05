@@ -510,20 +510,51 @@ async function syncActivitiesInBackground(athleteId, accessToken) {
 exports.getAthleteProfile = async (req, res) => {
   try {
     const { athleteId } = req.params;
+    const numericAthleteId = parseInt(athleteId);
 
-    const athlete = await Athlete.findOne({ stravaId: parseInt(athleteId) });
+    console.log(`🔍 [Profile] Fetching profile for ID: ${athleteId} (Numeric: ${numericAthleteId})`);
+
+    // 1. Fetch athlete profile
+    const athlete = await Athlete.findOne({ stravaId: numericAthleteId }).lean();
 
     if (!athlete) {
+      console.log(`❌ [Profile] Athlete not found: ${numericAthleteId}`);
       return res.status(404).json({
         success: false,
         message: 'Athlete not found'
       });
     }
+    
+    // 2. Aggregate stats from Activities
+    console.log(`📊 [Profile] Aggregating stats for athlete: ${numericAthleteId}`);
+    const stats = await Activity.aggregate([
+      { $match: { athleteId: numericAthleteId } },
+      {
+        $group: {
+          _id: null, // Group all matched activities
+          totalActivities: { $sum: 1 },
+          totalDistance: { $sum: '$distance' }, // in meters
+          totalMovingTime: { $sum: '$movingTime' } // in seconds
+        }
+      }
+    ]);
+
+    console.log(`📉 [Profile] Raw Aggregation Result:`, JSON.stringify(stats, null, 2));
+
+    // 3. Format and combine data
+    const dynamicStats = {
+      totalActivities: stats[0]?.totalActivities || 0,
+      totalDistanceKM: Math.round(((stats[0]?.totalDistance || 0) / 1000) * 10) / 10,
+      totalHours: Math.round(((stats[0]?.totalMovingTime || 0) / 3600) * 10) / 10,
+    };
+    
+    console.log(`✅ [Profile] Calculated Dynamic Stats:`, JSON.stringify(dynamicStats, null, 2));
 
     res.status(200).json({
       success: true,
-      data: athlete
+      data: { ...athlete, dynamicStats }
     });
+
   } catch (error) {
     console.error('Get athlete profile error:', error);
     res.status(500).json({

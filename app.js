@@ -40,6 +40,9 @@ app.use('/api', limiter);
 
 // Import routes
 const stravaRoutes = require('./routes/stravaRoutes');
+const redirectRoutes = require('./routes/redirectRoutes');
+const appRoutes = require('./routes/appRoutes');
+const leaderboardRoutes = require('./routes/leaderboard');
 
 // Log route registration
 console.log('🔧 Registering routes...');
@@ -53,9 +56,25 @@ console.log('      GET  /api/athlete/:id/stats');
 console.log('      GET  /api/athlete/:id/weekly');
 console.log('      GET  /api/athlete/:id/monthly');
 console.log('      GET  /api/athlete/:id/history');
+console.log('   📌 Deep Link Redirects:');
+console.log('      GET  /api/redirect/strava');
+console.log('      GET  /api/redirect/app');
+console.log('      GET  /api/redirect/urls');
+console.log('      GET  /api/redirect/detect');
+console.log('      GET  /api/redirect/stats');
+console.log('      GET  /api/redirect/logs');
+console.log('   📌 Mobile App Endpoints:');
+console.log('      GET  /api/app/profile/:id');
+console.log('      GET  /api/app/home/:id');
+console.log('      GET  /api/app/activities/:id');
+console.log('      GET  /api/app/leaderboard');
+console.log('      GET  /api/app/challenges');
 
 // Routes - Mount strava routes at /api root
 app.use('/api', stravaRoutes);
+app.use('/api/redirect', redirectRoutes);
+app.use('/api/app', appRoutes);
+app.use('/api', leaderboardRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -89,9 +108,28 @@ app.get('/api/health', (req, res) => {
       ],
       management: [
         'DELETE /api/athlete/:id/disconnect        - Disconnect Strava'
+      ],
+      redirect: [
+        'GET  /api/redirect/strava                 - Strava deep link redirect',
+        'GET  /api/redirect/app                    - Generic app redirect',
+        'GET  /api/redirect/urls                   - Get redirect URLs (JSON)',
+        'GET  /api/redirect/detect                 - Detect platform/device',
+        'GET  /api/redirect/stats                  - Redirect statistics',
+        'GET  /api/redirect/logs                   - Redirect logs'
+      ],
+      mobileApp: [
+        'GET  /api/app/profile/:id                 - Profile with lifetime stats',
+        'GET  /api/app/home/:id                    - Home screen data',
+        'GET  /api/app/activities/:id              - Activities with month filter',
+        'GET  /api/app/activities/:id/all          - All activities paginated',
+        'GET  /api/app/leaderboard                 - Leaderboard (week/month)',
+        'GET  /api/app/leaderboard/:id/rank        - User rank',
+        'GET  /api/app/challenges                  - All challenges',
+        'POST /api/app/challenges/:id/join         - Join a challenge',
+        'GET  /api/app/challenges/:id/my           - My joined challenges'
       ]
     },
-    note: 'All data endpoints require JWT token in Authorization header'
+    note: 'All data endpoints require JWT token in Authorization header. Redirect endpoints are public.'
   });
 });
 
@@ -130,7 +168,23 @@ app.use((req, res) => {
       'GET  /api/athlete/:id/history',
       'POST /api/athlete/:id/sync',
       'GET  /api/athlete/:id/sync-history',
-      'DELETE /api/athlete/:id/disconnect'
+      'DELETE /api/athlete/:id/disconnect',
+      'GET  /api/redirect/strava',
+      'GET  /api/redirect/app',
+      'GET  /api/redirect/urls',
+      'GET  /api/redirect/detect',
+      'GET  /api/redirect/stats',
+      'GET  /api/redirect/logs',
+      'GET  /api/redirect/health',
+      'GET  /api/app/profile/:id',
+      'GET  /api/app/home/:id',
+      'GET  /api/app/activities/:id',
+      'GET  /api/app/activities/:id/all',
+      'GET  /api/app/leaderboard',
+      'GET  /api/app/leaderboard/:id/rank',
+      'GET  /api/app/challenges',
+      'POST /api/app/challenges/:id/join',
+      'GET  /api/app/challenges/:id/my'
     ]
   });
 });

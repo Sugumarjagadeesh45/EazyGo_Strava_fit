@@ -1,5 +1,6 @@
 # iFit Club - Strava Integration Documentation (Frontend Guide)
 
+> **🕒 Last Updated:** 2026-02-17 (Dynamic Stats & Rolling Leaderboard)
 > **⚠️ IMPORTANT FOR FRONTEND AI:**
 > This document contains the **LIVE** endpoints and data structures. Use the URLs below to connect the mobile app to the backend.
 
@@ -7,52 +8,62 @@
 
 | Environment | Base URL | Status |
 |-------------|----------|--------|
-| **Public (Ngrok)** | `https://e257-103-59-135-74.ngrok-free.app` | **ACTIVE** (Use this for Mobile App) |
+| **Public (Ngrok)** | `https://d1c37b7aa116.ngrok-free.app` | **ACTIVE** (Use this for Mobile App) |
 | **Local** | `http://localhost:5001` | Development only |
 
 ---
 
 ## 🔐 Authentication Flow (Deep Linking)
 
-The authentication process uses OAuth 2.0 with a Deep Link redirect back to the app.
+1.  **Start Auth:** Open in mobile browser/webview:
+    `GET /api/auth/strava`
+    *(Full URL: `https://d1c37b7aa116.ngrok-free.app/api/auth/strava`)*
 
-1.  **Start Auth:** Open this URL in the mobile browser/webview:
-    ```
-    GET /api/auth/strava
-    ```
-    *(Full URL: `https://e257-103-59-135-74.ngrok-free.app/api/auth/strava`)*
+2.  **Redirect:** Backend redirects to app:
+    `ifitclub://auth-success?token=<JWT>&athleteId=<STRAVA_ID>&firstName=<NAME>&lastName=<NAME>&profile=<URL>`
 
-2.  **Redirect:** After successful Strava login, the backend redirects to:
-    ```
-    ifitclub://auth-success?token=<JWT_TOKEN>&athleteId=<STRAVA_ID>&firstName=<NAME>&lastName=<NAME>&profile=<URL>
-    ```
-
-3.  **Frontend Action (CRITICAL):**
-    *   Capture the `token` and `athleteId` from the URL.
-    *   Save the `token` in secure storage.
-    *   **IMMEDIATELY** call the Data Endpoints below to fetch the full user data.
+3.  **Action:** Save `token` and `athleteId`. Use `token` in `Authorization: Bearer <token>` header for all subsequent requests.
 
 ---
 
-## 📡 API Endpoints (Data Fetching)
+## 👤 Athlete Data Endpoints
 
 **Required Header:** `Authorization: Bearer <JWT_TOKEN>`
 
-### 1. 👤 Get Full Athlete Profile
+### 1. 👤 Get Athlete Profile & Dynamic Stats
 *   **Endpoint:** `GET /api/athlete/:id/profile`
-*   **Usage:** Call this immediately after login to get user details.
-*   **Example URL:** `/api/athlete/195904051/profile`
+*   **Usage:** Gets the full user profile along with dynamically calculated lifetime stats (Total Activities, Distance, and Hours).
+*   **Note:** `dynamicStats` are calculated from the local database of synced activities.
 
-### 2. 📊 Get Activity Statistics
+#### Response Format
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "6982ceff7524c2117fe91539",
+    "stravaId": 195904051,
+    "firstName": "sugumar",
+    "lastName": "jagadeesh",
+    "profile": "https://...",
+    "city": "Salem",
+    "country": "India",
+    "dynamicStats": {
+      "totalActivities": 75,
+      "totalDistanceKM": 98.1,
+      "totalHours": 18.5
+    }
+  }
+}
+```
+
+### 2. 📊 Get Activity Statistics (Strava Aggregated)
 *   **Endpoint:** `GET /api/athlete/:id/stats`
-*   **Usage:** Gets lifetime totals, recent ride/run totals, etc.
-*   **Example URL:** `/api/athlete/195904051/stats`
+*   **Usage:** Gets the pre-aggregated stats provided by Strava (YTD, All-time totals for Ride/Run/Swim).
 
 ### 3. 🚴 Get Activities List
 *   **Endpoint:** `GET /api/athlete/:id/activities`
 *   **Query Params:** `?page=1&limit=20`
-*   **Usage:** Gets the list of activities (Runs, Rides, Walks).
-*   **Example URL:** `/api/athlete/195904051/activities?limit=50`
+*   **Usage:** Gets a paginated list of recent activities.
 
 ### 4. 📅 Get Weekly Summary
 *   **Endpoint:** `GET /api/athlete/:id/weekly`
@@ -60,125 +71,70 @@ The authentication process uses OAuth 2.0 with a Deep Link redirect back to the 
 
 ### 5. 🔄 Sync/Refresh Data
 *   **Endpoint:** `POST /api/athlete/:id/sync`
-*   **Usage:** Triggers a fresh sync from Strava (e.g., "Pull to Refresh").
+*   **Usage:** Triggers a fresh sync from Strava. Use this for "Pull to Refresh".
 
 ---
 
-## 💻 Frontend Console Logging Requirement
+## 🏆 Leaderboard API (Dynamic Calculation)
 
-**To ensure data flow is correct, the Frontend MUST implement the following logging logic:**
+**Endpoint:** `GET /api/leaderboard`
 
-```javascript
-// Example Frontend Function to Fetch & Log Data
-const fetchAndLogUserData = async (athleteId, token) => {
-  const BASE_URL = 'https://e257-103-59-135-74.ngrok-free.app';
-  const headers = { Authorization: `Bearer ${token}` };
+**Query Parameters:**
+*   `period`:
+    *   `week` (default): **Rolling Last 7 Days** (e.g., Today minus 7 days)
+    *   `month`: **Rolling Last 30 Days** (e.g., Today minus 30 days)
+*   `type`: Filter by activity type.
+    *   Options: `All Activities` (default), `Walk`, `Run`, `Cycle Ride`, `Swim`, `Hike`, `WeightTraining`, `Workout`, `Yoga`
 
-  console.log('🚀 STARTING DATA FETCH FOR:', athleteId);
-
-  try {
-    // 1. Fetch Profile
-    const profileRes = await fetch(`${BASE_URL}/api/athlete/${athleteId}/profile`, { headers });
-    const profileData = await profileRes.json();
-    console.log('👤 [FRONTEND] COMPLETE PROFILE DATA:', JSON.stringify(profileData, null, 2));
-
-    // 2. Fetch Stats
-    const statsRes = await fetch(`${BASE_URL}/api/athlete/${athleteId}/stats`, { headers });
-    const statsData = await statsRes.json();
-    console.log('📊 [FRONTEND] COMPLETE STATS DATA:', JSON.stringify(statsData, null, 2));
-
-    // 3. Fetch Activities
-    const activitiesRes = await fetch(`${BASE_URL}/api/athlete/${athleteId}/activities?limit=5`, { headers });
-    const activitiesData = await activitiesRes.json();
-    console.log('🚴 [FRONTEND] RECENT ACTIVITIES:', JSON.stringify(activitiesData, null, 2));
-
-  } catch (error) {
-    console.error('❌ [FRONTEND] DATA FETCH ERROR:', error);
-  }
-};
-```
-
----
-
-## 📄 Data Response Examples (JSON)
-
-### Athlete Profile Response
+**Response Format:**
 ```json
 {
   "success": true,
-  "data": {
-    "_id": "6982ceff7524c2117fe91539",
-    "stravaId": 195904051,
-    "username": "sugumar_jagadeesh",
-    "firstName": "sugumar",
-    "lastName": "jagadeesh",
-    "city": "Salem",
-    "state": "Tamil Nadu",
-    "country": "India",
-    "gender": "M",
-    "profile": "https://lh3.googleusercontent.com/a/ACg8ocIpdryk94arDIR7zSXOtbXcXauDrA...",
-    "profileMedium": "https://lh3.googleusercontent.com/a/ACg8ocIpdryk94arDIR7zSXOtbXcXauDrA...",
-    "followerCount": 0,
-    "friendCount": 0,
-    "premium": false,
-    "stravaCreatedAt": "2025-12-01T08:20:32.000Z",
-    "stravaUpdatedAt": "2025-12-09T03:29:15.000Z",
-    "createdAt": "2026-02-04T04:45:51.439Z",
-    "updatedAt": "2026-02-04T04:45:51.439Z",
-    "fullName": "sugumar jagadeesh"
-  }
-}
-```
-
-### Activity Response (Single Item)
-```json
-{
-  "_id": "6982cf01f640edb179355d1b",
-  "athleteId": 195904051,
-  "stravaActivityId": 17212509432,
-  "name": "Morning Walk",
-  "type": "Walk",
-  "sportType": "Walk",
-  "distance": 1495.9,
-  "movingTime": 830,
-  "elapsedTime": 935,
-  "totalElevationGain": 4.5,
-  "startDate": "2026-01-29T02:13:29.000Z",
-  "startDateLocal": "2026-01-29T07:43:29.000Z",
-  "timezone": "(GMT+05:30) Asia/Kolkata",
-  "map": {
-    "id": "a17212509432",
-    "summaryPolyline": "..."
-  },
-  "averageSpeed": 1.8,
-  "maxSpeed": 2.5,
-  "calories": 120
-}
-```
-
-### Stats Response
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "6982cf01f640edb179355d99",
-    "athleteId": 195904051,
-    "biggestRideDistance": 25000,
-    "biggestClimbElevationGain": 150,
-    "allRideTotals": {
-      "count": 12,
-      "distance": 150400,
-      "movingTime": 36000,
-      "elapsedTime": 40000,
-      "elevationGain": 1200
-    },
-    "allRunTotals": {
-      "count": 5,
-      "distance": 25000,
-      "movingTime": 12000,
-      "elapsedTime": 13000,
-      "elevationGain": 200
+  "users": [
+    {
+      "name": "sugumar jagadeesh",
+      "profile": "https://lh3.googleusercontent.com/...",
+      "totalDistanceKM": 150.4,
+      "activityType": "Run",
+      "totalTimeMinutes": 320,
+      "totalElevationGainMeters": 1200,
+      "caloriesBurned": 3450
     }
-  }
+  ]
+}
+```
+
+**Backend Calculation Logic:**
+*   **Calories:** `(Factor × Weight × Time/60) + (ElevationBonus)`
+    *   *Factors:* Run(9.8), Ride(6.8), Walk(3.5), etc.
+    *   *Elevation Bonus:* `0.01 × Weight × Elevation` (for Run/Ride/Walk/Hike).
+*   **Sorting:** Descending by `totalDistanceKM`.
+*   **Inclusion:** Includes ALL registered users (even with 0 stats).
+
+---
+
+## 🎯 Challenges API
+
+**Endpoint:** `GET /api/challenges`
+
+**Usage:** Returns list of active challenges.
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "7012cf01f640edb179355d22",
+      "title": "Weekly 5k Run",
+      "description": "Complete a 5k run this week to earn a badge.",
+      "type": "Run",
+      "goalValue": 5000,
+      "startDate": "2026-02-10T00:00:00.000Z",
+      "endDate": "2026-02-17T23:59:59.000Z",
+      "participantCount": 15,
+      "image": "https://images.unsplash.com/..."
+    }
+  ]
 }
 ```
