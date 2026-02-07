@@ -3,9 +3,11 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
 require('dotenv').config();
 
 const errorHandler = require('./middleware/errorHandler');
+const userRoutes = require('./routes/userRoutes');
 
 const app = express();
 
@@ -19,22 +21,49 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.'
 });
 
-// CORS configuration for mobile apps
 const corsOptions = {
-  origin: process.env.SOCKET_CORS_ORIGIN === '*' ? '*' : (process.env.SOCKET_CORS_ORIGIN || '').split(','),
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  origin: [
+    'http://localhost:3000', // React dev server
+    'http://localhost:3001', // Alternative port
+    'http://localhost:5173', // Vite dev server
+    'https://357f-103-59-135-103.ngrok-free.app', // Your ngrok URL
+    // Add other origins as needed
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Access-Control-Allow-Headers',
+    'Access-Control-Request-Headers',
+    'Access-Control-Allow-Origin',
+    'ngrok-skip-browser-warning'
+  ],
+  exposedHeaders: ['Content-Length', 'Content-Type'],
+  maxAge: 86400, // 24 hours
 };
 
-// Middleware
 app.use(helmet({
-  contentSecurityPolicy: false // Disable for deep link redirect pages
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" } // Allows React to see the images
 }));
+
 app.use(cors(corsOptions));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+const mongoose = require('mongoose');
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Routes
+const eventRoutes = require('./routes/eventRoutes');
+app.use('/api', eventRoutes);
+
 
 app.use('/api', limiter);
 
@@ -75,6 +104,7 @@ app.use('/api', stravaRoutes);
 app.use('/api/redirect', redirectRoutes);
 app.use('/api/app', appRoutes);
 app.use('/api', leaderboardRoutes);
+
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -146,6 +176,226 @@ app.get('/', (req, res) => {
 
 // Error handling
 app.use(errorHandler);
+
+
+// =================== TEST ENDPOINTS FOR THUNDER CLIENT ===================
+// Add these lines right before: // 404 handler
+
+// 1. Public endpoint to see all database collections
+app.get('/api/db/collections', async (req, res) => {
+  try {
+    console.log('🔍 Checking database collections...');
+    
+    if (!mongoose.connection.db) {
+      return res.status(500).json({ error: 'Database not connected' });
+    }
+    
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    
+    console.log('\n📊 DATABASE COLLECTIONS:');
+    console.log('='.repeat(80));
+    collections.forEach((col, i) => {
+      console.log(`${i + 1}. ${col.name}`);
+    });
+    console.log('='.repeat(80));
+    
+    res.json({
+      success: true,
+      collections: collections.map(c => c.name)
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 2. Get ALL users from ANY collection (NO AUTH NEEDED)
+app.get('/api/db/all-users', async (req, res) => {
+  try {
+    console.log('🔍 Fetching ALL users from ALL collections...');
+    
+    const db = mongoose.connection.db;
+    let allUsers = [];
+    
+    // Check common collection names
+    const collectionsToCheck = ['athletes', 'Athlete', 'athlete', 'users', 'User'];
+    
+    for (const collectionName of collectionsToCheck) {
+      try {
+        const collection = db.collection(collectionName);
+        const count = await collection.countDocuments();
+        
+        if (count > 0) {
+          console.log(`✅ Found ${count} users in "${collectionName}" collection`);
+          const users = await collection.find({}).toArray();
+          allUsers = [...allUsers, ...users];
+        }
+      } catch (err) {
+        // Collection doesn't exist, skip
+      }
+    }
+    
+    // Also check Mongoose models
+    if (mongoose.models.Athlete) {
+      const modelUsers = await mongoose.models.Athlete.find().lean();
+      if (modelUsers.length > 0) {
+        console.log(`✅ Found ${modelUsers.length} users in Athlete model`);
+        allUsers = [...allUsers, ...modelUsers];
+      }
+    }
+    
+    // Log all users to console
+    console.log('\n📋 ALL REGISTERED USERS FOUND:');
+    console.log('='.repeat(80));
+    
+    if (allUsers.length === 0) {
+      console.log('❌ NO USERS FOUND IN DATABASE!');
+      console.log('The database is empty or users are stored in a different collection.');
+    } else {
+      allUsers.forEach((user, index) => {
+        console.log(`\n👤 USER ${index + 1}:`);
+        console.log(`   ID: ${user._id}`);
+        console.log(`   Strava ID: ${user.stravaId || user.id || user.athleteId || 'N/A'}`);
+        console.log(`   Name: ${user.firstName || user.firstname || 'Unknown'} ${user.lastName || user.lastname || ''}`);
+        console.log(`   Profile: ${user.profile || user.profileMedium || user.profile_medium || 'No profile'}`);
+        console.log(`   Location: ${user.city || 'N/A'}, ${user.country || 'N/A'}`);
+        console.log(`   Created: ${user.createdAt || 'Unknown'}`);
+        console.log(`   All fields: ${Object.keys(user).join(', ')}`);
+      });
+    }
+    
+    console.log('\n📊 SUMMARY:');
+    console.log(`Total users found: ${allUsers.length}`);
+    console.log('='.repeat(80));
+    
+    // Return clean user data
+    const cleanUsers = allUsers.map(user => ({
+      _id: user._id,
+      id: user.stravaId || user.id || user.athleteId,
+      firstName: user.firstName || user.firstname,
+      lastName: user.lastName || user.lastname,
+      username: user.username,
+      profile: user.profile || user.profileMedium || user.profile_medium,
+      city: user.city,
+      state: user.state,
+      country: user.country,
+      gender: user.gender || user.sex,
+      weight: user.weight,
+      premium: user.premium,
+      createdAt: user.createdAt,
+      lastSynced: user.lastSyncAt || user.lastSynced
+    }));
+    
+    res.json({
+      success: true,
+      totalUsers: cleanUsers.length,
+      users: cleanUsers,
+      message: 'Check server console for detailed user information'
+    });
+    
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3. Create a test user (for testing if database is empty)
+app.post('/api/db/create-test-user', async (req, res) => {
+  try {
+    console.log('📝 Creating test user...');
+    
+    const testUser = {
+      stravaId: Date.now(),
+      firstName: 'Test',
+      lastName: 'User',
+      username: 'test_user_' + Date.now(),
+      city: 'Test City',
+      country: 'Test Country',
+      profile: 'https://via.placeholder.com/150',
+      createdAt: new Date()
+    };
+    
+    // Try to save using Athlete model
+    let savedUser;
+    if (mongoose.models.Athlete) {
+      const Athlete = mongoose.models.Athlete;
+      savedUser = new Athlete(testUser);
+      await savedUser.save();
+      console.log('✅ Test user saved via Athlete model');
+    } else {
+      // Save directly to collection
+      const db = mongoose.connection.db;
+      const result = await db.collection('athletes').insertOne(testUser);
+      savedUser = { ...testUser, _id: result.insertedId };
+      console.log('✅ Test user saved directly to athletes collection');
+    }
+    
+    console.log('Test user created:', savedUser);
+    
+    res.json({
+      success: true,
+      message: 'Test user created successfully',
+      user: savedUser
+    });
+    
+  } catch (error) {
+    console.error('Error creating test user:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4. Direct MongoDB query endpoint
+app.get('/api/db/query', async (req, res) => {
+  try {
+    const { collection = 'athletes', query = '{}', limit = 50 } = req.query;
+    
+    console.log(`🔍 Querying collection "${collection}"`);
+    
+    const db = mongoose.connection.db;
+    const parsedQuery = JSON.parse(query || '{}');
+    
+    const documents = await db.collection(collection)
+      .find(parsedQuery)
+      .limit(parseInt(limit))
+      .toArray();
+    
+    console.log(`Found ${documents.length} documents in ${collection}`);
+    
+    // Show first document structure
+    if (documents.length > 0) {
+      console.log('\n📄 First document structure:');
+      console.log('='.repeat(80));
+      const firstDoc = documents[0];
+      Object.keys(firstDoc).forEach(key => {
+        console.log(`  ${key}: ${JSON.stringify(firstDoc[key])}`);
+      });
+      console.log('='.repeat(80));
+    }
+    
+    res.json({
+      success: true,
+      collection,
+      total: documents.length,
+      documents
+    });
+    
+  } catch (error) {
+    console.error('Query error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
+console.log('   📌 Admin User Management:');
+console.log('      GET  /api/admin/users           → All users with pagination');
+console.log('      GET  /api/admin/statistics      → User statistics');
+console.log('      GET  /api/admin/user/:id        → Detailed user profile');
+console.log('      DELETE /api/admin/user/:id      → Delete user (admin)');
+console.log('      GET  /api/admin/export          → Export all user data');
+
+// Add to routes:
+app.use('/api', userRoutes);
+
 
 // 404 handler
 app.use((req, res) => {

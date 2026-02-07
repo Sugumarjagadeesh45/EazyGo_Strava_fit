@@ -1,7 +1,3 @@
-/**
- * iFit Club Backend Server
- * Strava Integration with REAL data only
- */
 require('dotenv').config();
 
 const app = require('./app');

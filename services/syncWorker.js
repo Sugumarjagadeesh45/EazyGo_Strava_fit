@@ -156,8 +156,6 @@ async function fetchAndSaveAllActivities(athleteId, accessToken) {
   let updatedCount = 0;
 
   for (const activityData of activities) {
-    const existingActivity = await Activity.findOne({ stravaActivityId: activityData.id });
-
     const activityDoc = {
       athleteId,
       stravaActivityId: activityData.id,
@@ -207,15 +205,17 @@ async function fetchAndSaveAllActivities(athleteId, accessToken) {
       deviceName: activityData.device_name
     };
 
-    if (existingActivity) {
-      await Activity.updateOne(
-        { stravaActivityId: activityData.id },
-        activityDoc
-      );
-      updatedCount++;
-    } else {
-      await Activity.create(activityDoc);
+    // Use updateOne with upsert to prevent E11000 duplicate key errors
+    const result = await Activity.updateOne(
+      { stravaActivityId: activityData.id },
+      { $set: activityDoc },
+      { upsert: true }
+    );
+
+    if (result.upsertedCount > 0) {
       newCount++;
+    } else {
+      updatedCount++;
     }
   }
 

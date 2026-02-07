@@ -1,19 +1,7 @@
-/**
- * App Controller
- * Handles all endpoints specifically designed for the React Native mobile app
- */
-
 const Athlete = require('../models/Athlete');
 const Activity = require('../models/Activity');
 const Challenge = require('../models/Challenge');
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/**
- * Format duration from seconds to human-readable format
- */
 function formatDuration(seconds) {
   if (!seconds) return { hours: 0, minutes: 0, formatted: '0h 0m' };
   const hours = Math.floor(seconds / 3600);
@@ -26,9 +14,7 @@ function formatDuration(seconds) {
   };
 }
 
-/**
- * Format distance from meters to kilometers
- */
+
 function formatDistance(meters) {
   if (!meters) return { km: 0, meters: 0, formatted: '0.00 km' };
   const km = meters / 1000;
@@ -38,6 +24,7 @@ function formatDistance(meters) {
     formatted: `${km.toFixed(2)} km`
   };
 }
+
 
 /**
  * Categorize activity type for display
@@ -81,14 +68,6 @@ function endOfDay(date) {
   return d;
 }
 
-// ============================================================================
-// PROFILE ENDPOINTS
-// ============================================================================
-
-/**
- * GET /app/profile/:athleteId
- * Get user profile with calculated stats
- */
 exports.getProfile = async (req, res) => {
   try {
     const { athleteId } = req.params;
