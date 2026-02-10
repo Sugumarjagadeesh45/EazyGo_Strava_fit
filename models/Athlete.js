@@ -51,6 +51,17 @@ const athleteSchema = new mongoose.Schema({
   // Last sync timestamp
   lastSyncAt: Date,
 
+  // Health Stats (User Editable)
+  healthStats: {
+    bmi: String,
+    lung: String,
+    weight: String,
+    height: String,
+    bp: String,
+    temp: String,
+    focus: String
+  },
+
   // Our timestamps
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

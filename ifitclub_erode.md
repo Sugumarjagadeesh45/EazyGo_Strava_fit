@@ -1,140 +1,123 @@
-# iFit Club - Strava Integration Documentation (Frontend Guide)
+# iFit Club Backend API Documentation
 
-> **🕒 Last Updated:** 2026-02-17 (Dynamic Stats & Rolling Leaderboard)
-> **⚠️ IMPORTANT FOR FRONTEND AI:**
-> This document contains the **LIVE** endpoints and data structures. Use the URLs below to connect the mobile app to the backend.
+> **Status**: Updated for Real Data Integration.
+> **Critical Note**: All endpoints must return **REAL DATABASE DATA** calculated from actual user activities. Do not use hardcoded or mock responses.
 
-## 🌐 Server Configuration
-
-| Environment | Base URL | Status |
-|-------------|----------|--------|
-| **Public (Ngrok)** | `https://d1c37b7aa116.ngrok-free.app` | **ACTIVE** (Use this for Mobile App) |
-| **Local** | `http://localhost:5001` | Development only |
+## 🚀 Base Configuration
+- **Base URL**: `http://<YOUR_IP>:5000` (Local) or Production URL
+- **API Prefix**: `/api`
 
 ---
 
-## 🔐 Authentication Flow (Deep Linking)
+## 1. Health Statistics (Dashboard)
 
-1.  **Start Auth:** Open in mobile browser/webview:
-    `GET /api/auth/strava`
-    *(Full URL: `https://d1c37b7aa116.ngrok-free.app/api/auth/strava`)*
-
-2.  **Redirect:** Backend redirects to app:
-    `ifitclub://auth-success?token=<JWT>&athleteId=<STRAVA_ID>&firstName=<NAME>&lastName=<NAME>&profile=<URL>`
-
-3.  **Action:** Save `token` and `athleteId`. Use `token` in `Authorization: Bearer <token>` header for all subsequent requests.
-
----
-
-## 👤 Athlete Data Endpoints
-
-**Required Header:** `Authorization: Bearer <JWT_TOKEN>`
-
-### 1. 👤 Get Athlete Profile & Dynamic Stats
-*   **Endpoint:** `GET /api/athlete/:id/profile`
-*   **Usage:** Gets the full user profile along with dynamically calculated lifetime stats (Total Activities, Distance, and Hours).
-*   **Note:** `dynamicStats` are calculated from the local database of synced activities.
-
-#### Response Format
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "6982ceff7524c2117fe91539",
-    "stravaId": 195904051,
-    "firstName": "sugumar",
-    "lastName": "jagadeesh",
-    "profile": "https://...",
-    "city": "Salem",
-    "country": "India",
-    "dynamicStats": {
-      "totalActivities": 75,
-      "totalDistanceKM": 98.1,
-      "totalHours": 18.5
+### Get Health Stats
+- **Endpoint**: `GET /api/athlete/:id/health`
+- **Description**: Fetches the user's saved health metrics from the database.
+- **Response**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "weight": "75",
+      "height": "178",
+      "bmi": "23.7",
+      "bp": "120/80",
+      "lung": "4.5L",
+      "temp": "36.6"
     }
   }
-}
-```
+  ```
 
-### 2. 📊 Get Activity Statistics (Strava Aggregated)
-*   **Endpoint:** `GET /api/athlete/:id/stats`
-*   **Usage:** Gets the pre-aggregated stats provided by Strava (YTD, All-time totals for Ride/Run/Swim).
-
-### 3. 🚴 Get Activities List
-*   **Endpoint:** `GET /api/athlete/:id/activities`
-*   **Query Params:** `?page=1&limit=20`
-*   **Usage:** Gets a paginated list of recent activities.
-
-### 4. 📅 Get Weekly Summary
-*   **Endpoint:** `GET /api/athlete/:id/weekly`
-*   **Usage:** Gets aggregated stats for the last 4 weeks.
-
-### 5. 🔄 Sync/Refresh Data
-*   **Endpoint:** `POST /api/athlete/:id/sync`
-*   **Usage:** Triggers a fresh sync from Strava. Use this for "Pull to Refresh".
+### Update Health Stats
+- **Endpoint**: `POST /api/athlete/:id/health`
+- **Description**: Saves the user's editable health metrics.
+- **Body**:
+  ```json
+  {
+    "weight": "75",
+    "height": "178",
+    "bmi": "23.7",
+    "bp": "120/80",
+    "lung": "4.5L",
+    "temp": "36.6"
+  }
+  ```
 
 ---
 
-## 🏆 Leaderboard API (Dynamic Calculation)
+## 2. Club Performance (Real Data)
 
-**Endpoint:** `GET /api/leaderboard`
-
-**Query Parameters:**
-*   `period`:
-    *   `week` (default): **Rolling Last 7 Days** (e.g., Today minus 7 days)
-    *   `month`: **Rolling Last 30 Days** (e.g., Today minus 30 days)
-*   `type`: Filter by activity type.
-    *   Options: `All Activities` (default), `Walk`, `Run`, `Cycle Ride`, `Swim`, `Hike`, `WeightTraining`, `Workout`, `Yoga`
-
-**Response Format:**
-```json
-{
-  "success": true,
-  "users": [
-    {
-      "name": "sugumar jagadeesh",
-      "profile": "https://lh3.googleusercontent.com/...",
-      "totalDistanceKM": 150.4,
-      "activityType": "Run",
-      "totalTimeMinutes": 320,
-      "totalElevationGainMeters": 1200,
-      "caloriesBurned": 3450
-    }
-  ]
-}
-```
-
-**Backend Calculation Logic:**
-*   **Calories:** `(Factor × Weight × Time/60) + (ElevationBonus)`
-    *   *Factors:* Run(9.8), Ride(6.8), Walk(3.5), etc.
-    *   *Elevation Bonus:* `0.01 × Weight × Elevation` (for Run/Ride/Walk/Hike).
-*   **Sorting:** Descending by `totalDistanceKM`.
-*   **Inclusion:** Includes ALL registered users (even with 0 stats).
+### Get Top Performers (Today)
+- **Endpoint**: `GET /api/club/top-performer`
+- **Description**: Fetches the **Top 3** club members with the best performance **today** (based on distance).
+- **Logic**: 
+  1. Query all activities where `startDate` is today.
+  2. Group by user.
+  3. Sort by total distance descending.
+  4. Return top 3.
+- **Response**:
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "name": "John Doe",
+        "avatar": "url/to/image.jpg",
+        "totalDistance": 12.5,
+        "activityCount": 3,
+        "badge": "Today's Leader"
+      },
+      {
+        "name": "Jane Smith",
+        "avatar": "url/to/image2.jpg",
+        "totalDistance": 10.2,
+        "activityCount": 1,
+        "badge": "2nd Place"
+      },
+      {
+        "name": "Mike Ross",
+        "avatar": "url/to/image3.jpg",
+        "totalDistance": 8.5,
+        "activityCount": 2,
+        "badge": "3rd Place"
+      }
+    ]
+  }
+  ```
 
 ---
 
-## 🎯 Challenges API
+## 3. User Challenges (Create Own Challenge)
 
-**Endpoint:** `GET /api/challenges`
+### Create User Challenge
+- **Endpoint**: `POST /api/user-challenges`
+- **Description**: Allows a user to create their own custom challenge.
+- **Body**:
+  ```json
+  {
+    "eventName": "My Morning Run",
+    "bio": "Beat the sunrise",
+    "targetKm": "5",
+    "duration": "7", // Days
+    "description": "A personal challenge to run every morning."
+  }
+  ```
 
-**Usage:** Returns list of active challenges.
+---
 
-**Response Format:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "_id": "7012cf01f640edb179355d22",
-      "title": "Weekly 5k Run",
-      "description": "Complete a 5k run this week to earn a badge.",
-      "type": "Run",
-      "goalValue": 5000,
-      "startDate": "2026-02-10T00:00:00.000Z",
-      "endDate": "2026-02-17T23:59:59.000Z",
-      "participantCount": 15,
-      "image": "https://images.unsplash.com/..."
-    }
-  ]
-}
-```
+## 4. Events & Awards
+
+- **Get Events**: `GET /api/events` (Discover Tab)
+- **Get Awards**: `GET /api/awards` (Awards Tab)
+- **Join Event**: `POST /api/events/:id/join`
+- **My Challenges**: `GET /api/my-challenges?athleteId=...`
+
+---
+
+## 5. Data Sync (Strava)
+
+### Sync Activities
+- **Endpoint**: `POST /api/athlete/:id/sync`
+- **Description**: Triggers a manual sync with Strava to fetch latest activities.
+- **Usage**: Called when user pulls to refresh the dashboard to ensure "My Activity" progress is accurate.

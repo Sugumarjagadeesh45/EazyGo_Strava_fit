@@ -1,253 +1,3 @@
-// // routes/leaderboard.js - COMPLETE UPDATED VERSION
-// const express = require('express');
-// const router = express.Router();
-// const mongoose = require('mongoose');
-// const Athlete = require('../models/Athlete');
-// const Activity = require('../models/Activity');
-
-// // Get leaderboard with historical data support
-// router.get('/leaderboard', async (req, res) => {
-//   try {
-//     const { period = 'all', activityType = 'all' } = req.query;
-    
-//     console.log(`📊 Leaderboard request: period=${period}, activityType=${activityType}`);
-    
-//     // Get all athletes
-//     const athletes = await Athlete.find({}).lean();
-    
-//     if (!athletes || athletes.length === 0) {
-//       return res.json({ 
-//         success: true, 
-//         users: [], 
-//         message: 'No athletes found' 
-//       });
-//     }
-    
-//     const leaderboardData = [];
-//     const now = new Date();
-    
-//     for (const athlete of athletes) {
-//       try {
-//         // Build date filter based on period
-//         let dateFilter = {};
-        
-//         if (period === '7days') {
-//           // Last 7 days from today
-//           const sevenDaysAgo = new Date(now);
-//           sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-//           dateFilter = { startDate: { $gte: sevenDaysAgo } };
-          
-//         } else if (period === '30days') {
-//           // Last 30 days from today
-//           const thirtyDaysAgo = new Date(now);
-//           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-//           dateFilter = { startDate: { $gte: thirtyDaysAgo } };
-          
-//         } else if (period === 'all') {
-//           // ALL historical data - from registration date to today
-//           // Get athlete's earliest activity date or use registration date
-//           const earliestActivity = await Activity.findOne(
-//             { athleteId: athlete.stravaId.toString() },
-//             { startDate: 1 }
-//           ).sort({ startDate: 1 }).lean();
-          
-//           const registrationDate = earliestActivity?.startDate || 
-//                                   athlete.stravaCreatedAt || 
-//                                   athlete.createdAt || 
-//                                   new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()); // 1 year ago
-          
-//           dateFilter = { startDate: { $gte: registrationDate, $lte: now } };
-          
-//           console.log(`📅 Athlete ${athlete.firstName || 'Unknown'}: Historical data from ${registrationDate.toISOString()} to ${now.toISOString()}`);
-//         }
-        
-//         // Add activity type filter if not 'all'
-//         let activityQuery = {
-//           athleteId: athlete.stravaId ? athlete.stravaId.toString() : '',
-//           ...dateFilter
-//         };
-        
-//         if (activityType !== 'all') {
-//           activityQuery.type = activityType;
-//         }
-        
-//         // Get athlete's activities with filters
-//         const activities = await Activity.find(activityQuery).lean();
-        
-//         // Calculate totals
-//         const totals = calculateTotals(activities);
-        
-//         // Get athlete's registration date
-//         const registrationDate = athlete.stravaCreatedAt || athlete.createdAt;
-        
-//         // Get last activity date
-//         let lastActivityDate = null;
-//         if (activities.length > 0) {
-//           const latestActivity = activities.reduce((latest, current) => {
-//             const currentDate = new Date(current.startDate);
-//             const latestDate = latest ? new Date(latest.startDate) : new Date(0);
-//             return currentDate > latestDate ? current : latest;
-//           }, null);
-//           lastActivityDate = latestActivity.startDate;
-//         }
-        
-//         leaderboardData.push({
-//           athleteId: athlete.stravaId,
-//           name: `${athlete.firstName || ''} ${athlete.lastName || ''}`.trim() || 'Unknown',
-//           firstName: athlete.firstName,
-//           lastName: athlete.lastName,
-//           profile: athlete.profile || athlete.profileMedium || '',
-//           profile_medium: athlete.profileMedium || athlete.profile || '',
-//           city: athlete.city || 'Unknown',
-//           country: athlete.country || 'Unknown',
-//           totalDistanceKM: totals.distance,
-//           activityCount: totals.count,
-//           caloriesBurned: totals.calories,
-//           totalTimeMinutes: totals.movingTime,
-//           totalElevationGainMeters: totals.elevation,
-//           workoutDays: totals.uniqueDays,
-//           activityType: activityType === 'all' ? 'All Activities' : activityType,
-//           lastActivityDate: lastActivityDate,
-//           registrationDate: registrationDate,
-//           historicalData: period === 'all'
-//         });
-        
-//       } catch (err) {
-//         console.error(`Error processing athlete ${athlete.stravaId || athlete._id}:`, err.message);
-//         // Continue with other athletes
-//       }
-//     }
-    
-//     // Filter out athletes with no data
-//     const filteredData = leaderboardData.filter(user => user.activityCount > 0);
-    
-//     // Sort by distance (descending)
-//     filteredData.sort((a, b) => b.totalDistanceKM - a.totalDistanceKM);
-    
-//     console.log(`✅ Generated leaderboard with ${filteredData.length} athletes`);
-//     console.log(`📅 Period: ${period}, Activity Type: ${activityType}`);
-//     console.log(`📊 Total athletes with data: ${filteredData.length}`);
-    
-//     res.json({
-//       success: true,
-//       period,
-//       activityType,
-//       historicalData: period === 'all',
-//       users: filteredData,
-//       totalAthletes: filteredData.length,
-//       message: period === 'all' ? 
-//         'Complete historical data from registration date to today' : 
-//         `Data for last ${period === '7days' ? '7 days' : '30 days'}`
-//     });
-    
-//   } catch (error) {
-//     console.error('❌ Error in leaderboard endpoint:', error);
-//     res.status(500).json({ 
-//       success: false, 
-//       error: error.message,
-//       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-//     });
-//   }
-// });
-
-// // Helper function to calculate totals
-// function calculateTotals(activities) {
-//   if (!activities || activities.length === 0) {
-//     return {
-//       distance: 0,
-//       count: 0,
-//       calories: 0,
-//       movingTime: 0,
-//       elevation: 0,
-//       uniqueDays: 0
-//     };
-//   }
-  
-//   const totals = activities.reduce((acc, activity) => {
-//     acc.distance += activity.distance || 0;
-//     acc.calories += activity.calories || 0;
-//     acc.movingTime += activity.movingTime || 0;
-//     acc.elevation += activity.totalElevationGain || 0;
-//     return acc;
-//   }, { distance: 0, calories: 0, movingTime: 0, elevation: 0 });
-  
-//   // Convert distance from meters to kilometers
-//   totals.distance = totals.distance / 1000;
-//   totals.elevation = totals.elevation;
-  
-//   // Convert moving time from seconds to minutes
-//   totals.movingTime = Math.round(totals.movingTime / 60);
-  
-//   // Count unique activity days
-//   const uniqueDays = new Set(
-//     activities
-//       .filter(a => a.startDate)
-//       .map(a => new Date(a.startDate).toDateString())
-//   ).size;
-//   totals.uniqueDays = uniqueDays;
-  
-//   totals.count = activities.length;
-  
-//   return totals;
-// }
-
-// // Get available activity types
-// router.get('/activity-types', async (req, res) => {
-//   try {
-//     const activityTypes = await Activity.distinct('type');
-    
-//     const filteredTypes = activityTypes
-//       .filter(type => type && type.trim() !== '')
-//       .sort();
-    
-//     res.json({
-//       success: true,
-//       activityTypes: filteredTypes
-//     });
-//   } catch (error) {
-//     console.error('Error fetching activity types:', error);
-//     res.status(500).json({ 
-//       success: false, 
-//       error: error.message 
-//     });
-//   }
-// });
-
-// module.exports = router;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 const express = require('express');
 const router = express.Router();
@@ -262,9 +12,12 @@ const Activity = require('../models/Activity');
  */
 router.get('/leaderboard', async (req, res) => {
   try {
-    const { period = 'week', type = 'all' } = req.query;
+    const { period = '7days', type = 'all', activityType } = req.query;
     
-    console.log(`[Leaderboard] Request - Period: ${period}, Type: ${type}`);
+    // Handle activityType alias and defaults
+    const filterType = activityType || type || 'all';
+    
+    console.log(`[Leaderboard] Request - Period: ${period}, Type: ${filterType}`);
 
     // 1. Normalize Period Input
     let daysToSubtract = 7;
@@ -283,9 +36,9 @@ router.get('/leaderboard', async (req, res) => {
 
     // 3. Type Filter Logic
     let typeFilter = {};
-    if (type && type !== 'All' && type !== 'all') {
-      let stravaType = type;
-      if (type === 'Cycle Ride') stravaType = 'Ride';
+    if (filterType && filterType !== 'All' && filterType !== 'all') {
+      let stravaType = filterType;
+      if (filterType === 'Cycle Ride') stravaType = 'Ride';
       typeFilter = { type: stravaType };
     }
 
@@ -430,7 +183,7 @@ router.get('/leaderboard', async (req, res) => {
           
           // Metrics
           totalDistanceKM: { $round: [{ $divide: ['$totalDistance', 1000] }, 2] },
-          activityType: { $literal: type === 'all' || !type ? 'All Activities' : type },
+          activityType: { $literal: filterType === 'all' || !filterType ? 'All Activities' : filterType },
           totalTimeMinutes: { $round: [{ $divide: ['$totalTime', 60] }, 0] },
           totalElevationGainMeters: { $round: ['$totalElevation', 0] },
           caloriesBurned: { $round: ['$totalCalories', 0] },
@@ -447,7 +200,7 @@ router.get('/leaderboard', async (req, res) => {
     res.json({
       success: true,
       period,
-      activityType: type,
+      activityType: filterType,
       totalAthletes: leaderboard.length,
       users: leaderboard
     });
@@ -513,6 +266,78 @@ router.get('/activity-types', async (req, res) => {
     console.error('❌ Error fetching activity types:', error);
     const fallbackTypes = ['Run', 'Walk', 'Ride', 'Swim', 'Hike', 'Workout'];
     res.json({ success: true, activityTypes: fallbackTypes });
+  }
+});
+
+/**
+ * @route   GET /api/club/top-performer
+ * @desc    Get the club member with the best performance today
+ */
+router.get('/club/top-performer', async (req, res) => {
+  try {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const topPerformer = await Activity.aggregate([
+      {
+        $match: {
+          startDate: { $gte: startOfDay, $lte: endOfDay }
+        }
+      },
+      {
+        $group: {
+          _id: "$athleteId",
+          totalDistance: { $sum: "$distance" },
+          activityCount: { $sum: 1 }
+        }
+      },
+      { $sort: { totalDistance: -1 } },
+      { $limit: 3 },
+      {
+        $lookup: {
+          from: "athletes",
+          localField: "_id",
+          foreignField: "athleteId",
+          as: "athleteInfo"
+        }
+      },
+      { $unwind: "$athleteInfo" }
+    ]);
+
+    if (topPerformer.length === 0) {
+      return res.json({ 
+        success: true, 
+        data: []
+      });
+    }
+
+    const data = topPerformer.map((performer, index) => {
+      const athlete = performer.athleteInfo;
+      let badge = "Participant";
+      if (index === 0) badge = "Today's Leader";
+      if (index === 1) badge = "2nd Place";
+      if (index === 2) badge = "3rd Place";
+
+      return {
+        name: `${athlete.firstname || athlete.firstName || 'Unknown'} ${athlete.lastname || athlete.lastName || ''}`.trim(),
+        avatar: athlete.profile_medium || athlete.profile || '',
+        totalDistance: parseFloat((performer.totalDistance / 1000).toFixed(2)),
+        activityCount: performer.activityCount,
+        badge: badge
+      };
+    });
+    
+    res.json({
+      success: true,
+      data: data
+    });
+
+  } catch (error) {
+    console.error('❌ Top Performer Error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

@@ -13,22 +13,37 @@ const storage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
+        // Handle missing extensions (common with blobs)
+        let ext = path.extname(file.originalname);
+        if (!ext || ext === '.') {
+            const mimeMap = {
+                'image/jpeg': '.jpg',
+                'image/png': '.png',
+                'image/gif': '.gif',
+                'image/webp': '.webp'
+            };
+            ext = mimeMap[file.mimetype] || '';
+        }
         cb(
             null,
-            `event-${Date.now()}${path.extname(file.originalname)}`
+            `event-${Date.now()}${ext}`
         );
     }
 });
 
 const fileFilter = (req, file, cb) => {
-    const allowed = /png|jpg|jpeg/;
-    const ext = allowed.test(path.extname(file.originalname).toLowerCase());
-    const mime = allowed.test(file.mimetype);
+    // Allow more image types and be more robust
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    const allowedExts = /jpeg|jpg|png|gif|webp/i;
 
-    if (ext && mime) {
+    const mimeValid = allowedMimes.includes(file.mimetype);
+    const extValid = allowedExts.test(path.extname(file.originalname));
+
+    // Allow if EITHER mimetype OR extension is valid (fixes blob upload issues)
+    if (mimeValid || extValid) {
         cb(null, true);
     } else {
-        cb(new Error('Only images allowed (png, jpg, jpeg)'), false);
+        cb(new Error('Only images allowed (jpeg, jpg, png, gif, webp)'), false);
     }
 };
 

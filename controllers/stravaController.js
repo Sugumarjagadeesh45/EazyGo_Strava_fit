@@ -515,7 +515,7 @@ exports.getAthleteProfile = async (req, res) => {
     console.log(`🔍 [Profile] Fetching profile for ID: ${athleteId} (Numeric: ${numericAthleteId})`);
 
     // 1. Fetch athlete profile
-    const athlete = await Athlete.findOne({ stravaId: numericAthleteId }).lean();
+    const athlete = await Athlete.findOne({ stravaId: numericAthleteId }).select('+healthStats').lean();
 
     if (!athlete) {
       console.log(`❌ [Profile] Athlete not found: ${numericAthleteId}`);
@@ -552,7 +552,11 @@ exports.getAthleteProfile = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: { ...athlete, dynamicStats }
+      data: { 
+        ...athlete, 
+        healthStats: athlete.healthStats || {}, // Ensure healthStats is present
+        dynamicStats 
+      }
     });
 
   } catch (error) {

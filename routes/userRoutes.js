@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Athlete = require('../models/Athlete');
+const stravaController = require('../controllers/stravaController');
 
 // User schema (if not already defined)
 const User = mongoose.models.Athlete || mongoose.model('Athlete', new mongoose.Schema({
@@ -19,8 +20,32 @@ const User = mongoose.models.Athlete || mongoose.model('Athlete', new mongoose.S
   totalDistance: { type: Number, default: 0 },
   totalActivities: { type: Number, default: 0 },
   totalCalories: { type: Number, default: 0 },
+  healthStats: {
+    bmi: String,
+    lung: String,
+    weight: String,
+    height: String,
+    bp: String,
+    temp: String,
+    focus: String
+  },
   createdAt: { type: Date, default: Date.now }
 }));
+
+// Fix: Ensure healthStats exists on the schema if the model is already compiled from elsewhere
+if (User.schema && !User.schema.paths.healthStats) {
+  User.schema.add({
+    healthStats: {
+      bmi: String,
+      lung: String,
+      weight: String,
+      height: String,
+      bp: String,
+      temp: String,
+      focus: String
+    }
+  });
+}
 
 // Middleware to verify admin token
 const verifyAdmin = async (req, res, next) => {
@@ -361,5 +386,161 @@ router.get('/admin/export', verifyAdmin, async (req, res) => {
     });
   }
 });
+
+// =====================================================
+// NEW ADMIN PANEL COMPLIANCE ROUTES
+// =====================================================
+
+// POST /api/champions - Add Champion (Manual User)
+router.post('/champions', verifyAdmin, async (req, res) => {
+  try {
+    const { name, mobile, location, activity, description } = req.body;
+    
+    const nameParts = (name || 'Champion').trim().split(/\s+/);
+    const firstname = nameParts[0];
+    const lastname = nameParts.slice(1).join(' ');
+    
+    const newUser = new User({
+      athleteId: mobile || `manual_${Date.now()}`,
+      firstname,
+      lastname,
+      city: location,
+      profile: description,
+      totalActivities: 0,
+      totalDistance: 0,
+      createdAt: new Date()
+    });
+    
+    await newUser.save();
+    res.status(201).json({ success: true, message: 'Champion added', user: newUser });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/db/all-users - Get All Users (Simple List)
+router.get('/db/all-users', verifyAdmin, async (req, res) => {
+  try {
+    const users = await User.find().sort({ createdAt: -1 });
+    res.status(200).json({ success: true, users });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// DELETE /api/admin/users/:id - Delete User (Plural Alias)
+router.delete('/admin/users/:id', verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    let result = await User.findOneAndDelete({ athleteId: id });
+    if (!result) result = await User.findByIdAndDelete(id);
+    
+    if (!result) return res.status(404).json({ success: false, message: 'User not found' });
+    res.status(200).json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/db/collections - List DB Collections
+router.get('/db/collections', verifyAdmin, async (req, res) => {
+  try {
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    res.status(200).json({ success: true, collections: collections.map(c => c.name) });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/health - System Health
+router.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', timestamp: new Date() });
+});
+
+// GET /api/athlete/:id/health - Get Health Stats
+router.get('/athlete/:id/health', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Determine query based on Schema and ID format
+    let query = {};
+    
+    // Check if using the real Athlete model (has stravaId)
+    if (User.schema.paths.stravaId) {
+      if (!isNaN(id)) {
+        query.stravaId = parseInt(id);
+      } else if (mongoose.Types.ObjectId.isValid(id)) {
+        query._id = id;
+      } else {
+        query.stravaId = id; // Fallback
+      }
+    } else {
+      // Fallback schema (uses athleteId)
+      query.athleteId = id;
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        query = { $or: [{ athleteId: id }, { _id: id }] };
+      }
+    }
+
+    const user = await User.findOne(query).select('healthStats');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.json({ success: true, data: user.healthStats || {} });
+  } catch (error) {
+    console.error('[Health Fetch Error]', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/athlete/:id/health - Update Health Stats
+router.post('/athlete/:id/health', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const stats = req.body;
+
+    console.log(`[Health Update] ID: ${id}, Stats:`, stats);
+
+    if (!stats) {
+      return res.status(400).json({ success: false, message: 'No stats provided' });
+    }
+    
+    // Determine query based on Schema and ID format
+    let query = {};
+    
+    // Check if using the real Athlete model (has stravaId)
+    if (User.schema.paths.stravaId) {
+      if (!isNaN(id)) {
+        query.stravaId = parseInt(id);
+      } else if (mongoose.Types.ObjectId.isValid(id)) {
+        query._id = id;
+      } else {
+        query.stravaId = id; // Fallback
+      }
+    } else {
+      // Fallback schema (uses athleteId)
+      query.athleteId = id;
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        query = { $or: [{ athleteId: id }, { _id: id }] };
+      }
+    }
+
+    const user = await User.findOneAndUpdate(
+      query,
+      { $set: { healthStats: stats } },
+      { new: true, upsert: true }
+    );
+
+    res.json({ success: true, message: 'Health stats updated', data: user.healthStats });
+  } catch (error) {
+    console.error('[Health Update Error]', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/athlete/:id/sync - Manual Sync with Strava
+router.post('/athlete/:athleteId/sync', stravaController.syncAthleteData);
 
 module.exports = router;
